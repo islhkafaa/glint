@@ -155,9 +155,13 @@ void searchFiles(const std::string &query, const std::string &dbPath) {
     for (const auto &result : results) {
       std::cout << rank << ". " << result.filePath
                 << " (score: " << result.score << ")\n";
+      if (!result.preview.empty()) {
+        std::cout << "   " << result.preview << "\n";
+      }
+      std::cout << "\n";
       rank++;
       if (rank > 20) {
-        std::cout << "\n... and " << (results.size() - 20) << " more results\n";
+        std::cout << "... and " << (results.size() - 20) << " more results\n";
         break;
       }
     }

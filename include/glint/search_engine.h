@@ -9,8 +9,9 @@ namespace glint {
 struct SearchResult {
   std::string filePath;
   int score;
+  std::string preview;
 
-  SearchResult(const std::string &path, int s) : filePath(path), score(s) {}
+  SearchResult(const std::string &path, int s, const std::string& prev = "") : filePath(path), score(s), preview(prev) {}
 };
 
 class SearchEngine {
