@@ -12,6 +12,8 @@ add_executable(glint
     src/main.cpp
     src/crawler.cpp
     src/database.cpp
+    src/text_extractor.cpp
+    src/tokenizer.cpp
 )
 
 target_include_directories(glint PRIVATE

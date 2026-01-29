@@ -1,8 +1,11 @@
 #include "glint/crawler.h"
 #include "glint/database.h"
+#include "glint/text_extractor.h"
+#include "glint/tokenizer.h"
 
 #include <iomanip>
 #include <iostream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -18,9 +21,11 @@ void printHelp() {
   std::cout << "  --version           Show version information\n";
   std::cout << "  --crawl <path>      Crawl directory and index files\n";
   std::cout << "  --db <path>         Database file path (default: glint.db)\n";
+  std::cout << "  --verbose           Show detailed processing information\n";
 }
 
-void crawlDirectory(const std::string &path, const std::string &dbPath) {
+void crawlDirectory(const std::string &path, const std::string &dbPath,
+                    bool verbose) {
   std::cout << "Crawling directory: " << path << "\n";
   std::cout << "Database: " << dbPath << "\n\n";
 
@@ -32,10 +37,29 @@ void crawlDirectory(const std::string &path, const std::string &dbPath) {
 
     size_t fileCount = 0;
     std::uintmax_t totalSize = 0;
+    size_t totalTokens = 0;
+    std::set<std::string> uniqueTokens;
 
     crawler.setProgressCallback([&](const glint::FileInfo &info) {
       fileCount++;
       totalSize += info.size;
+
+      std::string text = glint::TextExtractor::extractText(info.path);
+      if (!text.empty()) {
+        auto tokens = glint::Tokenizer::tokenize(text);
+        totalTokens += tokens.size();
+
+        for (const auto &token : tokens) {
+          uniqueTokens.insert(token);
+        }
+
+        if (verbose && !tokens.empty()) {
+          std::cout << "\n"
+                    << info.path.filename().string() << ": " << tokens.size()
+                    << " tokens\n";
+        }
+      }
+
       if (fileCount % 100 == 0) {
         std::cout << "\rProcessed: " << fileCount << " files" << std::flush;
       }
@@ -51,6 +75,8 @@ void crawlDirectory(const std::string &path, const std::string &dbPath) {
     std::cout << "Files in database: " << db.getFileCount() << "\n";
     std::cout << "Total size: " << std::fixed << std::setprecision(2)
               << (totalSize / 1024.0 / 1024.0) << " MB\n";
+    std::cout << "Total tokens: " << totalTokens << "\n";
+    std::cout << "Unique tokens: " << uniqueTokens.size() << "\n";
   } catch (const std::exception &e) {
     std::cerr << "Error: " << e.what() << "\n";
   }
@@ -66,6 +92,7 @@ int main(int argc, char *argv[]) {
 
   std::string crawlPath;
   std::string dbPath = "glint.db";
+  bool verbose = false;
 
   for (size_t i = 0; i < args.size(); ++i) {
     const auto &arg = args[i];
@@ -96,10 +123,13 @@ int main(int argc, char *argv[]) {
         return 1;
       }
     }
+    if (arg == "--verbose") {
+      verbose = true;
+    }
   }
 
   if (!crawlPath.empty()) {
-    crawlDirectory(crawlPath, dbPath);
+    crawlDirectory(crawlPath, dbPath, verbose);
     return 0;
   }
 
