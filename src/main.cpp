@@ -1,4 +1,5 @@
 #include "glint/crawler.h"
+#include "glint/database.h"
 
 #include <iomanip>
 #include <iostream>
@@ -16,30 +17,43 @@ void printHelp() {
   std::cout << "  --help              Show this help message\n";
   std::cout << "  --version           Show version information\n";
   std::cout << "  --crawl <path>      Crawl directory and index files\n";
+  std::cout << "  --db <path>         Database file path (default: glint.db)\n";
 }
 
-void crawlDirectory(const std::string &path) {
-  std::cout << "Crawling directory: " << path << "\n\n";
+void crawlDirectory(const std::string &path, const std::string &dbPath) {
+  std::cout << "Crawling directory: " << path << "\n";
+  std::cout << "Database: " << dbPath << "\n\n";
 
-  glint::DirectoryCrawler crawler(path);
+  try {
+    glint::Database db(dbPath);
+    db.initialize();
 
-  size_t fileCount = 0;
-  std::uintmax_t totalSize = 0;
+    glint::DirectoryCrawler crawler(path);
 
-  crawler.setProgressCallback([&](const glint::FileInfo &info) {
-    fileCount++;
-    totalSize += info.size;
-    if (fileCount % 100 == 0) {
-      std::cout << "\rProcessed: " << fileCount << " files" << std::flush;
-    }
-  });
+    size_t fileCount = 0;
+    std::uintmax_t totalSize = 0;
 
-  auto results = crawler.crawl();
+    crawler.setProgressCallback([&](const glint::FileInfo &info) {
+      fileCount++;
+      totalSize += info.size;
+      if (fileCount % 100 == 0) {
+        std::cout << "\rProcessed: " << fileCount << " files" << std::flush;
+      }
+    });
 
-  std::cout << "\r\nCrawl complete!\n";
-  std::cout << "Files found: " << results.size() << "\n";
-  std::cout << "Total size: " << std::fixed << std::setprecision(2)
-            << (totalSize / 1024.0 / 1024.0) << " MB\n";
+    auto results = crawler.crawl();
+
+    std::cout << "\r\nStoring files in database...\n";
+    db.insertFiles(results);
+
+    std::cout << "\nCrawl complete!\n";
+    std::cout << "Files found: " << results.size() << "\n";
+    std::cout << "Files in database: " << db.getFileCount() << "\n";
+    std::cout << "Total size: " << std::fixed << std::setprecision(2)
+              << (totalSize / 1024.0 / 1024.0) << " MB\n";
+  } catch (const std::exception &e) {
+    std::cerr << "Error: " << e.what() << "\n";
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -49,6 +63,9 @@ int main(int argc, char *argv[]) {
     std::cout << "Glint initialized. Use --help for usage information.\n";
     return 0;
   }
+
+  std::string crawlPath;
+  std::string dbPath = "glint.db";
 
   for (size_t i = 0; i < args.size(); ++i) {
     const auto &arg = args[i];
@@ -63,13 +80,27 @@ int main(int argc, char *argv[]) {
     }
     if (arg == "--crawl") {
       if (i + 1 < args.size()) {
-        crawlDirectory(args[i + 1]);
-        return 0;
+        crawlPath = args[i + 1];
+        ++i;
       } else {
         std::cerr << "Error: --crawl requires a directory path\n";
         return 1;
       }
     }
+    if (arg == "--db") {
+      if (i + 1 < args.size()) {
+        dbPath = args[i + 1];
+        ++i;
+      } else {
+        std::cerr << "Error: --db requires a file path\n";
+        return 1;
+      }
+    }
+  }
+
+  if (!crawlPath.empty()) {
+    crawlDirectory(crawlPath, dbPath);
+    return 0;
   }
 
   std::cerr << "Unknown option. Use --help for usage information.\n";
