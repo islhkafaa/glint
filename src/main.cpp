@@ -1,5 +1,7 @@
 #include "glint/crawler.h"
 #include "glint/database.h"
+#include "glint/index_builder.h"
+#include "glint/search_engine.h"
 #include "glint/text_extractor.h"
 #include "glint/tokenizer.h"
 
@@ -21,6 +23,8 @@ void printHelp() {
   std::cout << "  --version           Show version information\n";
   std::cout << "  --crawl <path>      Crawl directory and index files\n";
   std::cout << "  --db <path>         Database file path (default: glint.db)\n";
+  std::cout
+      << "  --search <query>    Search for files containing query terms\n";
   std::cout << "  --verbose           Show detailed processing information\n";
 }
 
@@ -33,6 +37,7 @@ void crawlDirectory(const std::string &path, const std::string &dbPath,
     glint::Database db(dbPath);
     db.initialize();
 
+    glint::IndexBuilder indexBuilder(db);
     glint::DirectoryCrawler crawler(path);
 
     size_t fileCount = 0;
@@ -70,6 +75,15 @@ void crawlDirectory(const std::string &path, const std::string &dbPath,
     std::cout << "\r\nStoring files in database...\n";
     db.insertFiles(results);
 
+    std::cout << "Building inverted index...\n";
+    for (const auto &file : results) {
+      std::string text = glint::TextExtractor::extractText(file.path);
+      if (!text.empty()) {
+        auto tokens = glint::Tokenizer::tokenize(text);
+        indexBuilder.indexFile(file.path.string(), tokens);
+      }
+    }
+
     std::cout << "\nCrawl complete!\n";
     std::cout << "Files found: " << results.size() << "\n";
     std::cout << "Files in database: " << db.getFileCount() << "\n";
@@ -77,6 +91,39 @@ void crawlDirectory(const std::string &path, const std::string &dbPath,
               << (totalSize / 1024.0 / 1024.0) << " MB\n";
     std::cout << "Total tokens: " << totalTokens << "\n";
     std::cout << "Unique tokens: " << uniqueTokens.size() << "\n";
+    std::cout << "Indexed tokens: " << db.getTokenCount() << "\n";
+  } catch (const std::exception &e) {
+    std::cerr << "Error: " << e.what() << "\n";
+  }
+}
+
+void searchFiles(const std::string &query, const std::string &dbPath) {
+  std::cout << "Searching for: " << query << "\n";
+  std::cout << "Database: " << dbPath << "\n\n";
+
+  try {
+    glint::Database db(dbPath);
+    glint::SearchEngine searchEngine(db);
+
+    auto results = searchEngine.search(query);
+
+    if (results.empty()) {
+      std::cout << "No results found.\n";
+      return;
+    }
+
+    std::cout << "Found " << results.size() << " result(s):\n\n";
+
+    int rank = 1;
+    for (const auto &result : results) {
+      std::cout << rank << ". " << result.filePath
+                << " (score: " << result.score << ")\n";
+      rank++;
+      if (rank > 20) {
+        std::cout << "\n... and " << (results.size() - 20) << " more results\n";
+        break;
+      }
+    }
   } catch (const std::exception &e) {
     std::cerr << "Error: " << e.what() << "\n";
   }
@@ -91,6 +138,7 @@ int main(int argc, char *argv[]) {
   }
 
   std::string crawlPath;
+  std::string searchQuery;
   std::string dbPath = "glint.db";
   bool verbose = false;
 
@@ -114,6 +162,15 @@ int main(int argc, char *argv[]) {
         return 1;
       }
     }
+    if (arg == "--search") {
+      if (i + 1 < args.size()) {
+        searchQuery = args[i + 1];
+        ++i;
+      } else {
+        std::cerr << "Error: --search requires a query string\n";
+        return 1;
+      }
+    }
     if (arg == "--db") {
       if (i + 1 < args.size()) {
         dbPath = args[i + 1];
@@ -130,6 +187,11 @@ int main(int argc, char *argv[]) {
 
   if (!crawlPath.empty()) {
     crawlDirectory(crawlPath, dbPath, verbose);
+    return 0;
+  }
+
+  if (!searchQuery.empty()) {
+    searchFiles(searchQuery, dbPath);
     return 0;
   }
 

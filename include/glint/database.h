@@ -20,7 +20,15 @@ public:
   void insertFile(const FileInfo &file);
   void insertFiles(const std::vector<FileInfo> &files);
 
+  void insertToken(const std::string &token, int fileId, int frequency);
+  void
+  insertTokens(const std::vector<std::tuple<std::string, int, int>> &tokens);
+
   size_t getFileCount() const;
+  size_t getTokenCount() const;
+  int getFileId(const std::string &path) const;
+  std::string getFilePath(int fileId) const;
+  std::vector<std::pair<int, int>> searchToken(const std::string &token) const;
 
 private:
   void executeSQL(const char *sql);
