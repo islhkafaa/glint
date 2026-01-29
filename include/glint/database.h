@@ -30,6 +30,12 @@ public:
   std::string getFilePath(int fileId) const;
   std::vector<std::pair<int, int>> searchToken(const std::string &token) const;
 
+  bool isFileModified(const std::string &path,
+                      std::filesystem::file_time_type modTime) const;
+  void deleteFileTokens(int fileId);
+  void optimizeDatabase();
+  bool hasFileTokens(int fileId) const;
+
 private:
   void executeSQL(const char *sql);
 

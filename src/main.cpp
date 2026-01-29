@@ -5,6 +5,7 @@
 #include "glint/text_extractor.h"
 #include "glint/tokenizer.h"
 
+#include <chrono>
 #include <iomanip>
 #include <iostream>
 #include <set>
@@ -25,11 +26,14 @@ void printHelp() {
   std::cout << "  --db <path>         Database file path (default: glint.db)\n";
   std::cout
       << "  --search <query>    Search for files containing query terms\n";
+  std::cout << "  --stats             Show performance statistics\n";
   std::cout << "  --verbose           Show detailed processing information\n";
 }
 
 void crawlDirectory(const std::string &path, const std::string &dbPath,
-                    bool verbose) {
+                    bool verbose, bool showStats) {
+  auto startTime = std::chrono::high_resolution_clock::now();
+
   std::cout << "Crawling directory: " << path << "\n";
   std::cout << "Database: " << dbPath << "\n\n";
 
@@ -41,6 +45,8 @@ void crawlDirectory(const std::string &path, const std::string &dbPath,
     glint::DirectoryCrawler crawler(path);
 
     size_t fileCount = 0;
+    size_t skippedCount = 0;
+    size_t indexedCount = 0;
     std::uintmax_t totalSize = 0;
     size_t totalTokens = 0;
     std::set<std::string> uniqueTokens;
@@ -77,12 +83,30 @@ void crawlDirectory(const std::string &path, const std::string &dbPath,
 
     std::cout << "Building inverted index...\n";
     for (const auto &file : results) {
+      int fileId = db.getFileId(file.path.string());
+
+      if (fileId != -1 &&
+          !db.isFileModified(file.path.string(), file.lastModified) &&
+          db.hasFileTokens(fileId)) {
+        skippedCount++;
+        continue;
+      }
+
       std::string text = glint::TextExtractor::extractText(file.path);
       if (!text.empty()) {
+        if (fileId != -1) {
+          db.deleteFileTokens(fileId);
+        }
+
         auto tokens = glint::Tokenizer::tokenize(text);
         indexBuilder.indexFile(file.path.string(), tokens);
+        indexedCount++;
       }
     }
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        endTime - startTime);
 
     std::cout << "\nCrawl complete!\n";
     std::cout << "Files found: " << results.size() << "\n";
@@ -92,6 +116,19 @@ void crawlDirectory(const std::string &path, const std::string &dbPath,
     std::cout << "Total tokens: " << totalTokens << "\n";
     std::cout << "Unique tokens: " << uniqueTokens.size() << "\n";
     std::cout << "Indexed tokens: " << db.getTokenCount() << "\n";
+
+    if (showStats) {
+      std::cout << "\nPerformance Statistics:\n";
+      std::cout << "Time elapsed: " << (duration.count() / 1000.0)
+                << " seconds\n";
+      std::cout << "Files indexed: " << indexedCount << "\n";
+      std::cout << "Files skipped (unchanged): " << skippedCount << "\n";
+      if (duration.count() > 0) {
+        double filesPerSec = (fileCount * 1000.0) / duration.count();
+        std::cout << "Processing rate: " << std::fixed << std::setprecision(1)
+                  << filesPerSec << " files/second\n";
+      }
+    }
   } catch (const std::exception &e) {
     std::cerr << "Error: " << e.what() << "\n";
   }
@@ -141,6 +178,7 @@ int main(int argc, char *argv[]) {
   std::string searchQuery;
   std::string dbPath = "glint.db";
   bool verbose = false;
+  bool showStats = false;
 
   for (size_t i = 0; i < args.size(); ++i) {
     const auto &arg = args[i];
@@ -183,10 +221,13 @@ int main(int argc, char *argv[]) {
     if (arg == "--verbose") {
       verbose = true;
     }
+    if (arg == "--stats") {
+      showStats = true;
+    }
   }
 
   if (!crawlPath.empty()) {
-    crawlDirectory(crawlPath, dbPath, verbose);
+    crawlDirectory(crawlPath, dbPath, verbose, showStats);
     return 0;
   }
 

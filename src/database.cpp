@@ -13,6 +13,11 @@ Database::Database(const std::string &dbPath) : dbPath_(dbPath), db_(nullptr) {
     sqlite3_close(db_);
     throw std::runtime_error("Failed to open database: " + error);
   }
+
+  executeSQL("PRAGMA journal_mode=WAL;");
+  executeSQL("PRAGMA synchronous=NORMAL;");
+  executeSQL("PRAGMA cache_size=10000;");
+  executeSQL("PRAGMA temp_store=MEMORY;");
 }
 
 Database::~Database() {
@@ -226,6 +231,61 @@ Database::searchToken(const std::string &token) const {
 
   sqlite3_finalize(stmt);
   return results;
+}
+
+bool Database::isFileModified(const std::string &path,
+                              std::filesystem::file_time_type modTime) const {
+  sqlite3_stmt *stmt = nullptr;
+  const char *sql = "SELECT modified_time FROM files WHERE path = ?;";
+
+  int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+  if (rc != SQLITE_OK) {
+    return true;
+  }
+
+  sqlite3_bind_text(stmt, 1, path.c_str(), -1, SQLITE_STATIC);
+
+  bool modified = true;
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    int64_t storedTime = sqlite3_column_int64(stmt, 0);
+    int64_t currentTime = modTime.time_since_epoch().count();
+    modified = (storedTime != currentTime);
+  }
+
+  sqlite3_finalize(stmt);
+  return modified;
+}
+
+void Database::deleteFileTokens(int fileId) {
+  std::ostringstream sql;
+  sql << "DELETE FROM token_files WHERE file_id = " << fileId << ";";
+  executeSQL(sql.str().c_str());
+}
+
+void Database::optimizeDatabase() {
+  executeSQL("ANALYZE;");
+  executeSQL("VACUUM;");
+}
+
+bool Database::hasFileTokens(int fileId) const {
+  sqlite3_stmt *stmt = nullptr;
+  const char *sql = "SELECT COUNT(*) FROM token_files WHERE file_id = ?;";
+
+  int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+  if (rc != SQLITE_OK) {
+    return false;
+  }
+
+  sqlite3_bind_int(stmt, 1, fileId);
+
+  bool hasTokens = false;
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    int count = sqlite3_column_int(stmt, 0);
+    hasTokens = (count > 0);
+  }
+
+  sqlite3_finalize(stmt);
+  return hasTokens;
 }
 
 } // namespace glint
