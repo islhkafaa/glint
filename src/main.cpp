@@ -26,6 +26,7 @@ void printHelp() {
   std::cout << "  --db <path>         Database file path (default: glint.db)\n";
   std::cout
       << "  --search <query>    Search for files containing query terms\n";
+  std::cout << "  --type <ext>        Filter results by file extension\n";
   std::cout << "  --stats             Show performance statistics\n";
   std::cout << "  --verbose           Show detailed processing information\n";
 }
@@ -134,15 +135,20 @@ void crawlDirectory(const std::string &path, const std::string &dbPath,
   }
 }
 
-void searchFiles(const std::string &query, const std::string &dbPath) {
+void searchFiles(const std::string &query, const std::string &dbPath,
+                 const std::string &fileType) {
   std::cout << "Searching for: " << query << "\n";
-  std::cout << "Database: " << dbPath << "\n\n";
+  std::cout << "Database: " << dbPath << "\n";
+  if (!fileType.empty()) {
+    std::cout << "File type filter: " << fileType << "\n";
+  }
+  std::cout << "\n";
 
   try {
     glint::Database db(dbPath);
     glint::SearchEngine searchEngine(db);
 
-    auto results = searchEngine.search(query);
+    auto results = searchEngine.search(query, fileType);
 
     if (results.empty()) {
       std::cout << "No results found.\n";
@@ -181,6 +187,7 @@ int main(int argc, char *argv[]) {
   std::string crawlPath;
   std::string searchQuery;
   std::string dbPath = "glint.db";
+  std::string fileType;
   bool verbose = false;
   bool showStats = false;
 
@@ -222,6 +229,15 @@ int main(int argc, char *argv[]) {
         return 1;
       }
     }
+    if (arg == "--type") {
+      if (i + 1 < args.size()) {
+        fileType = args[i + 1];
+        ++i;
+      } else {
+        std::cerr << "Error: --type requires a file extension\n";
+        return 1;
+      }
+    }
     if (arg == "--verbose") {
       verbose = true;
     }
@@ -236,7 +252,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (!searchQuery.empty()) {
-    searchFiles(searchQuery, dbPath);
+    searchFiles(searchQuery, dbPath, fileType);
     return 0;
   }
 

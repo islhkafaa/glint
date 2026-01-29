@@ -19,6 +19,7 @@ public:
   explicit SearchEngine(Database &db);
 
   std::vector<SearchResult> search(const std::string &query) const;
+  std::vector<SearchResult> search(const std::string &query, const std::string &fileTypeFilter) const;
 
 private:
   Database &db_;
